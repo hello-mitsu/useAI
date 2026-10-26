@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AIチャットサイト (完全版)</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+        .chat-container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .messages { height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; margin-bottom: 20px; background: #fafafa; }
+        .message { margin-bottom: 15px; padding: 10px; border-radius: 5px; max-width: 80%; }
+        .user-message { background: #e3f2fd; text-align: right; margin-left: auto; }
+        .ai-message { background: #f1f8e9; text-align: left; margin-right: auto; }
+        .preview-container { margin-bottom: 10px; display: none; }
+        .preview-image { max-width: 100px; max-height: 100px; border-radius: 4px; display: block; }
+        .input-area { display: flex; gap: 10px; }
+        input[type="text"] { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .file-label { padding: 10px; background: #6c757d; color: white; border-radius: 4px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div class="chat-container">
+    <h2>AIチャット (画像対応・完全版)</h2>
+    <div class="messages" id="messages"></div>
+    <div class="preview-container" id="previewContainer">
+        <img id="imagePreview" class="preview-image" src="" alt="プレビュー">
+    </div>
+    <div class="input-area">
+        <label class="file-label">
+            📷 画像
+            <input type="file" id="imageInput" accept="image/*" style="display: none;">
+        </label>
+        <input type="text" id="userInput" placeholder="AIに質問を入力...">
+        <button id="sendBtn">送信</button>
+    </div>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://gstatic.com";
+    import { getFirestore, collection, addDoc, serverTimestamp, query, orderBy, onSnapshot } from "https://gstatic.com";
+
+    // あなたのFirebase設定
+    const firebaseConfig = {
+        apiKey: "AIzaSyAiujOHTFh7-Z-LcfTjUwn2ejrIWj0beAI",
+        authDomain: "://firebaseapp.com",
+        projectId: "ai-use-c52bb",
+        storageBucket: "ai-use-c52bb.firebasestorage.app",
+        messagingSenderId: "857370898933",
+        appId: "1:857370898933:web:2158dd6c7db6b8fb8bf0bc",
+        measurementId: "G-PZQK647SS6"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const imageInput = document.getElementById('imageInput');
+    const imagePreview = document.getElementById('imagePreview');
+    const previewContainer = document.getElementById('previewContainer');
+    const userInput = document.getElementById('userInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const messagesContainer = document.getElementById('messages');
+
+    let selectedImageBase64 = null;
+
+    // 画像プレビュー処理
+    imageInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                selectedImageBase64 = event.target.result;
+                imagePreview.src = selectedImageBase64;
+                previewContainer.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+
+    // 送信ボタンの処理
+    sendBtn.addEventListener('click', async () => {
+        const text = userInput.value.trim();
+        if (!text && !selectedImageBase64) return;
+
+        sendBtn.disabled = true;
+
+        try {
+            // 1. ユーザーの入力を先にFirebaseへ保存
+            await addDoc(collection(db, "chats"), {
+                text: text,
+                image: selectedImageBase64,
+                sender: "user",
+                timestamp: serverTimestamp()
+            });
+
+            const targetImage = selectedImageBase64;
+            
+            // 画面上の入力エリアをリセット
+            userInput.value = '';
+            selectedImageBase64 = null;
+            previewContainer.style.display = 'none';
+            imageInput.value = '';
+
+            // 2. 教えてもらったCloudflare Workerへデータ（文字＋画像）を送信
+            const workerUrl = "https://steep-rice-c97c.tkym3215.workers.dev/"; 
+            
+            const response = await fetch(workerUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text: text, image: targetImage })
+            });
+
+            const result = await response.json();
+
+            // エラーが返ってきた場合のハンドリング
+            if (result.error) {
+                throw new Error(result.error);
+            }
+
+            // 3. AIからの返答をFirebaseに保存
+            await addDoc(collection(db, "chats"), {
+                text: result.reply,
+                sender: "ai",
+                timestamp: serverTimestamp()
+            });
+
+        } catch (error) {
+            console.error("エラーが発生しました: ", error);
+            alert("AIからの返答取得に失敗しました。Cloudflare Workerの設定（AI Bindings等）を確認してください。");
+        } finally {
+            sendBtn.disabled = false;
+        }
+    });
+
+    // Firestoreのデータをリアルタイム表示
+    const q = query(collection(db, "chats"), orderBy("timestamp", "asc"));
+    onSnapshot(q, (snapshot) => {
+        messagesContainer.innerHTML = '';
+        snapshot.forEach((doc) => {
+            const data = doc.data();
+            const msgDiv = document.createElement('div');
+            msgDiv.classList.add('message', data.sender === 'user' ? 'user-message' : 'ai-message');
+            
+            let content = `<p>${data.text || ''}</p>`;
+            if (data.image) {
+                content += `<img src="${data.image}" style="max-width: 100%; border-radius: 4px; margin-top: 5px;">`;
+            }
+            msgDiv.innerHTML = content;
+            messagesContainer.appendChild(msgDiv);
+        });
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    });
+</script>
+</body>
+</html>
