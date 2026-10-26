@@ -1,158 +1,258 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AIチャットサイト (完全版)</title>
-    <style>
-        body { font-family: sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
-        .chat-container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .messages { height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; margin-bottom: 20px; background: #fafafa; }
-        .message { margin-bottom: 15px; padding: 10px; border-radius: 5px; max-width: 80%; }
-        .user-message { background: #e3f2fd; text-align: right; margin-left: auto; }
-        .ai-message { background: #f1f8e9; text-align: left; margin-right: auto; }
-        .preview-container { margin-bottom: 10px; display: none; }
-        .preview-image { max-width: 100px; max-height: 100px; border-radius: 4px; display: block; }
-        .input-area { display: flex; gap: 10px; }
-        input[type="text"] { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
-        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        button:hover { background: #0056b3; }
-        button:disabled { background: #ccc; cursor: not-allowed; }
-        .file-label { padding: 10px; background: #6c757d; color: white; border-radius: 4px; cursor: pointer; }
-    </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AIチャット（画像対応）</title>
+  <style>
+    :root { color-scheme: light; }
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: #f3f5f8; color: #18202a; }
+    .app { max-width: 760px; margin: 0 auto; background: white; border-radius: 14px; padding: 18px; box-shadow: 0 4px 20px #0000000d; }
+    header { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+    h1 { font-size: 1.3rem; margin: 0; }
+    .auth { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    #status { color:#4c5968; font-size:.9rem; margin:10px 0; overflow-wrap:anywhere; }
+    button, .file-label { border:0; border-radius:8px; padding:10px 14px; cursor:pointer; font:inherit; }
+    button { background:#1769e0; color:white; }
+    button.secondary, .file-label { background:#e9eef5; color:#18202a; }
+    button:disabled { opacity:.55; cursor:wait; }
+    #messages { height: min(58vh, 520px); min-height:280px; overflow-y:auto; border:1px solid #e0e5eb; border-radius:10px; padding:12px; background:#fbfcfe; }
+    .message { max-width:88%; margin:10px 0; padding:10px 12px; border-radius:12px; white-space:pre-wrap; overflow-wrap:anywhere; }
+    .user { margin-left:auto; background:#e5f1ff; }
+    .model { margin-right:auto; background:#edf6e8; }
+    .role { font-size:.75rem; color:#526071; margin-bottom:4px; }
+    .composer { margin-top:12px; display:grid; grid-template-columns:1fr auto; gap:8px; }
+    textarea { width:100%; box-sizing:border-box; min-height:74px; resize:vertical; padding:10px; border:1px solid #ccd4df; border-radius:8px; font:inherit; }
+    .controls { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:8px; }
+    #previewWrap { display:none; margin-top:10px; }
+    #preview { max-width:180px; max-height:180px; object-fit:contain; display:block; border-radius:8px; border:1px solid #ddd; }
+    .hint { color:#5d6875; font-size:.85rem; line-height:1.5; }
+    [hidden] { display:none !important; }
+    @media (max-width:520px) { body {padding:8px} .app {padding:12px} .composer {grid-template-columns:1fr} .message {max-width:95%} }
+  </style>
 </head>
 <body>
-
-<div class="chat-container">
-    <h2>AIチャット (画像対応・完全版)</h2>
-    <div class="messages" id="messages"></div>
-    <div class="preview-container" id="previewContainer">
-        <img id="imagePreview" class="preview-image" src="" alt="プレビュー">
+<main class="app">
+  <header>
+    <h1>AIチャット（画像対応）</h1>
+    <div class="auth">
+      <button id="loginBtn">Googleでログイン</button>
+      <button id="logoutBtn" class="secondary" hidden>ログアウト</button>
     </div>
-    <div class="input-area">
-        <label class="file-label">
-            📷 画像
-            <input type="file" id="imageInput" accept="image/*" style="display: none;">
-        </label>
-        <input type="text" id="userInput" placeholder="AIに質問を入力...">
-        <button id="sendBtn">送信</button>
-    </div>
-</div>
+  </header>
+  <p id="status">ログインしてください。</p>
+  <div id="messages" aria-live="polite"></div>
+  <div id="previewWrap">
+    <p class="hint">送信する画像</p>
+    <img id="preview" alt="選択した画像のプレビュー">
+    <button id="removeImageBtn" type="button" class="secondary">画像を取り消す</button>
+  </div>
+  <div class="composer">
+    <textarea id="userInput" placeholder="質問を入力…（画像だけでも送れます）" disabled></textarea>
+    <button id="sendBtn" disabled>送信</button>
+  </div>
+  <div class="controls">
+    <label class="file-label">📷 画像を選ぶ
+      <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp" hidden disabled>
+    </label>
+    <span class="hint">画像は最大4MB程度を推奨。履歴には質問文と回答のみ保存され、画像自体は保存されません。</span>
+  </div>
+</main>
 
 <script type="module">
-    import { initializeApp } from "https://gstatic.com";
-    import { getFirestore, collection, addDoc, serverTimestamp, query, orderBy, onSnapshot } from "https://gstatic.com";
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+  import {
+    getFirestore, collection, addDoc, serverTimestamp, query, orderBy, onSnapshot
+  } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+  import {
+    getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
+  } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 
-    // あなたのFirebase設定
-    const firebaseConfig = {
-        apiKey: "AIzaSyAiujOHTFh7-Z-LcfTjUwn2ejrIWj0beAI",
-        authDomain: "://firebaseapp.com",
-        projectId: "ai-use-c52bb",
-        storageBucket: "ai-use-c52bb.firebasestorage.app",
-        messagingSenderId: "857370898933",
-        appId: "1:857370898933:web:2158dd6c7db6b8fb8bf0bc",
-        measurementId: "G-PZQK647SS6"
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyAiujOHTFh7-Z-LcfTjUwn2ejrIWj0beAI",
+  authDomain: "ai-use-c52bb.firebaseapp.com",
+  projectId: "ai-use-c52bb",
+  storageBucket: "ai-use-c52bb.firebasestorage.app",
+  messagingSenderId: "857370898933",
+  appId: "1:857370898933:web:2158dd6c7db6b8fb8bf0bc",
+  measurementId: "G-PZQK647SS6"
+};
+  // Cloudflare Worker のURL
+  const WORKER_URL = "https://steep-rice-c97c.tkym3215.workers.dev/";
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const auth = getAuth(app);
+  const provider = new GoogleAuthProvider();
+
+  const loginBtn = document.getElementById("loginBtn");
+  const logoutBtn = document.getElementById("logoutBtn");
+  const statusEl = document.getElementById("status");
+  const messagesEl = document.getElementById("messages");
+  const inputEl = document.getElementById("userInput");
+  const sendBtn = document.getElementById("sendBtn");
+  const imageInput = document.getElementById("imageInput");
+  const previewWrap = document.getElementById("previewWrap");
+  const preview = document.getElementById("preview");
+  const removeImageBtn = document.getElementById("removeImageBtn");
+
+  let currentUser = null;
+  let unsubscribeMessages = null;
+  let selectedImageDataUrl = null;
+
+  loginBtn.addEventListener("click", async () => {
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      console.error(error);
+      alert("Googleログインに失敗しました。Firebase AuthenticationのGoogle設定と承認済みドメインを確認してください。");
+    }
+  });
+
+  logoutBtn.addEventListener("click", async () => {
+    try { await signOut(auth); }
+    catch (error) { console.error(error); alert("ログアウトに失敗しました。"); }
+  });
+
+  function clearImage() {
+    selectedImageDataUrl = null;
+    imageInput.value = "";
+    preview.removeAttribute("src");
+    previewWrap.style.display = "none";
+  }
+  removeImageBtn.addEventListener("click", clearImage);
+
+  imageInput.addEventListener("change", () => {
+    const file = imageInput.files?.[0];
+    if (!file) { clearImage(); return; }
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      clearImage();
+      alert("PNG、JPEG、WebP形式の画像を選んでください。");
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      clearImage();
+      alert("画像は4MB以下にしてください。");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      selectedImageDataUrl = String(reader.result);
+      preview.src = selectedImageDataUrl;
+      previewWrap.style.display = "block";
     };
+    reader.onerror = () => alert("画像を読み込めませんでした。");
+    reader.readAsDataURL(file);
+  });
 
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
+  function addMessage(role, text, timestamp) {
+    const wrapper = document.createElement("div");
+    wrapper.className = `message ${role === "user" ? "user" : "model"}`;
+    const label = document.createElement("div");
+    label.className = "role";
+    label.textContent = role === "user" ? "あなた" : "AI";
+    const content = document.createElement("div");
+    content.textContent = text || "";
+    wrapper.append(label, content);
+    messagesEl.appendChild(wrapper);
+  }
 
-    const imageInput = document.getElementById('imageInput');
-    const imagePreview = document.getElementById('imagePreview');
-    const previewContainer = document.getElementById('previewContainer');
-    const userInput = document.getElementById('userInput');
-    const sendBtn = document.getElementById('sendBtn');
-    const messagesContainer = document.getElementById('messages');
+  onAuthStateChanged(auth, (user) => {
+    currentUser = user;
+    loginBtn.hidden = !!user;
+    logoutBtn.hidden = !user;
+    inputEl.disabled = !user;
+    sendBtn.disabled = !user;
+    imageInput.disabled = !user;
+    statusEl.textContent = user ? `${user.email || "Googleアカウント"} でログイン中` : "ログインしてください。";
 
-    let selectedImageBase64 = null;
+    if (unsubscribeMessages) {
+      unsubscribeMessages();
+      unsubscribeMessages = null;
+    }
+    messagesEl.replaceChildren();
 
-    // 画像プレビュー処理
-    imageInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = function(event) {
-                selectedImageBase64 = event.target.result;
-                imagePreview.src = selectedImageBase64;
-                previewContainer.style.display = 'block';
-            };
-            reader.readAsDataURL(file);
-        }
+    if (!user) return;
+
+    const messagesRef = collection(db, "users", user.uid, "messages");
+    const q = query(messagesRef, orderBy("createdAt", "asc"));
+    unsubscribeMessages = onSnapshot(q, (snapshot) => {
+      messagesEl.replaceChildren();
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        addMessage(data.role, data.text, data.createdAt);
+      });
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }, (error) => {
+      console.error(error);
+      statusEl.textContent = "履歴を読み込めません。Firestoreのルールを確認してください。";
     });
+  });
 
-    // 送信ボタンの処理
-    sendBtn.addEventListener('click', async () => {
-        const text = userInput.value.trim();
-        if (!text && !selectedImageBase64) return;
+  async function sendMessage() {
+    if (!currentUser) {
+      alert("先にGoogleでログインしてください。");
+      return;
+    }
+    const text = inputEl.value.trim();
+    const image = selectedImageDataUrl;
+    if (!text && !image) return;
 
-        sendBtn.disabled = true;
+    sendBtn.disabled = true;
+    const previousStatus = statusEl.textContent;
+    statusEl.textContent = "AIが回答しています…";
 
-        try {
-            // 1. ユーザーの入力を先にFirebaseへ保存
-            await addDoc(collection(db, "chats"), {
-                text: text,
-                image: selectedImageBase64,
-                sender: "user",
-                timestamp: serverTimestamp()
-            });
+    try {
+      const messagesRef = collection(db, "users", currentUser.uid, "messages");
+      await addDoc(messagesRef, {
+        role: "user",
+        text: text || "添付した画像について説明してください。",
+        createdAt: serverTimestamp()
+      });
 
-            const targetImage = selectedImageBase64;
-            
-            // 画面上の入力エリアをリセット
-            userInput.value = '';
-            selectedImageBase64 = null;
-            previewContainer.style.display = 'none';
-            imageInput.value = '';
+      const idToken = await currentUser.getIdToken();
+      const response = await fetch(WORKER_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`
+        },
+        body: JSON.stringify({ text, image })
+      });
 
-            // 2. 教えてもらったCloudflare Workerへデータ（文字＋画像）を送信
-            const workerUrl = "https://steep-rice-c97c.tkym3215.workers.dev/"; 
-            
-            const response = await fetch(workerUrl, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text: text, image: targetImage })
-            });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.error) {
+        throw new Error(result.error || `Workerエラー（${response.status}）`);
+      }
+      if (typeof result.reply !== "string" || !result.reply.trim()) {
+        throw new Error("AIから空の回答が返されました。");
+      }
 
-            const result = await response.json();
+      await addDoc(messagesRef, {
+        role: "model",
+        text: result.reply,
+        createdAt: serverTimestamp()
+      });
+      inputEl.value = "";
+      clearImage();
+      statusEl.textContent = `${currentUser.email || "Googleアカウント"} でログイン中`;
+    } catch (error) {
+      console.error(error);
+      statusEl.textContent = previousStatus;
+      alert(`送信に失敗しました。\n${error.message || "設定を確認してください。"}`);
+    } finally {
+      sendBtn.disabled = !currentUser;
+    }
+  }
 
-            // エラーが返ってきた場合のハンドリング
-            if (result.error) {
-                throw new Error(result.error);
-            }
-
-            // 3. AIからの返答をFirebaseに保存
-            await addDoc(collection(db, "chats"), {
-                text: result.reply,
-                sender: "ai",
-                timestamp: serverTimestamp()
-            });
-
-        } catch (error) {
-            console.error("エラーが発生しました: ", error);
-            alert("AIからの返答取得に失敗しました。Cloudflare Workerの設定（AI Bindings等）を確認してください。");
-        } finally {
-            sendBtn.disabled = false;
-        }
-    });
-
-    // Firestoreのデータをリアルタイム表示
-    const q = query(collection(db, "chats"), orderBy("timestamp", "asc"));
-    onSnapshot(q, (snapshot) => {
-        messagesContainer.innerHTML = '';
-        snapshot.forEach((doc) => {
-            const data = doc.data();
-            const msgDiv = document.createElement('div');
-            msgDiv.classList.add('message', data.sender === 'user' ? 'user-message' : 'ai-message');
-            
-            let content = `<p>${data.text || ''}</p>`;
-            if (data.image) {
-                content += `<img src="${data.image}" style="max-width: 100%; border-radius: 4px; margin-top: 5px;">`;
-            }
-            msgDiv.innerHTML = content;
-            messagesContainer.appendChild(msgDiv);
-        });
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
-    });
+  sendBtn.addEventListener("click", sendMessage);
+  inputEl.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      sendMessage();
+    }
+  });
 </script>
 </body>
 </html>
